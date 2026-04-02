@@ -1,0 +1,19 @@
+# deps
+server/node_modules/
+
+# secrets — NEVER push
+server/keypair.json
+server/.env
+
+# runtime data
+graphs/
+memory/
+
+# build artifacts
+server/dist/
+*.js.map
+.DS_Store
+
+# internal / IDE
+.claude/
+SUBMISSION_GUIDE.md

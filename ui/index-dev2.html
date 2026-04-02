@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neural</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --panel-bg: rgba(2,8,18,0.97);
+  --panel-border: rgba(80,160,255,0.12);
+  --text: rgba(200,230,255,0.9);
+  --text-muted: rgba(120,180,255,0.45);
+  --accent: rgba(160,216,255,0.95);
+  --panel-w: 264px;
+}
+body {
+  background: #000;
+  color: var(--text);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  height: 100vh;
+  overflow: hidden;
+}
+#three-canvas { position: absolute; inset: 0; display: block; }
+
+/* ── Drop zone ── */
+#drop-zone {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 24px; z-index: 10;
+  background: #000; transition: opacity 0.4s;
+}
+#drop-zone.hidden { opacity: 0; pointer-events: none; }
+#drop-zone.dragover { background: rgba(80,160,255,0.02); }
+#drop-zone h1 { font-size: 20px; font-weight: 500; color: rgba(200,230,255,0.9); letter-spacing: 6px; text-transform: uppercase; }
+#drop-zone p { color: rgba(200,230,255,0.75); font-size: 14px; letter-spacing: 1px; }
+.drop-ring {
+  width: 160px; height: 160px; border: 1px solid rgba(80,160,255,0.15); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; position: relative;
+  animation: spin 16s linear infinite;
+}
+.drop-ring::before { content: ''; position: absolute; width: 120px; height: 120px; border: 1px solid rgba(80,160,255,0.06); border-radius: 50%; animation: spin 10s linear infinite reverse; }
+.drop-ring::after { content: ''; position: absolute; width: 80px; height: 80px; border: 1px solid rgba(80,160,255,0.04); border-radius: 50%; animation: spin 6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.drop-icon { font-size: 20px; opacity: 0.5; }
+#file-input { display: none; }
+.btn-upload { padding: 8px 22px; border: 1px solid rgba(80,160,255,0.35); background: transparent; color: rgba(200,230,255,0.75); border-radius: 2px; cursor: pointer; font-size: 12px; font-family: inherit; letter-spacing: 2px; text-transform: uppercase; transition: all 0.2s; }
+.btn-upload:hover { border-color: rgba(80,160,255,0.5); color: var(--text); }
+.example-links { display: flex; gap: 16px; align-items: center; }
+.example-link { font-size: 11px; color: rgba(160,200,255,0.65); cursor: pointer; background: none; border: none; font-family: inherit; letter-spacing: 1px; border-bottom: 1px solid rgba(80,160,255,0.25); padding-bottom: 1px; transition: color 0.2s; }
+.example-link:hover { color: var(--text); }
+
+/* ── Topbar ── */
+#topbar { position: absolute; top: 16px; left: 16px; z-index: 20; display: flex; gap: 12px; align-items: center; }
+#topbar.hidden { display: none; }
+.topbar-title { font-size: 10px; letter-spacing: 4px; color: rgba(160,210,255,0.85); text-transform: uppercase; }
+.topbar-meta { font-size: 10px; color: rgba(140,190,255,0.65); letter-spacing: 1px; }
+
+/* ── Toggle panel btn ── */
+#toggle-panel { position: absolute; top: 16px; right: calc(var(--panel-w) + 12px); z-index: 21; padding: 5px 10px; background: var(--panel-bg); border: 1px solid var(--panel-border); color: rgba(160,210,255,0.75); border-radius: 2px; cursor: pointer; font-size: 10px; font-family: inherit; letter-spacing: 2px; text-transform: uppercase; transition: all 0.2s; }
+#toggle-panel.hidden { display: none; }
+#toggle-panel.collapsed { right: 12px; }
+#toggle-panel:hover { color: var(--text); }
+
+/* ── Side panel ── */
+#panel { position: absolute; right: 0; top: 0; bottom: 0; width: var(--panel-w); background: var(--panel-bg); border-left: 1px solid var(--panel-border); overflow: hidden; z-index: 20; display: flex; flex-direction: column; transition: transform 0.3s ease; }
+#panel.hidden { transform: translateX(100%); }
+#panel-scroll { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(80,160,255,0.1) transparent; }
+.panel-header { padding: 14px 16px; border-bottom: 1px solid var(--panel-border); display: flex; align-items: center; justify-content: space-between; background: var(--panel-bg); }
+.panel-title { font-size: 10px; letter-spacing: 3px; color: rgba(180,215,255,0.85); text-transform: uppercase; }
+.panel-rebuild { background: none; border: none; color: rgba(140,190,255,0.6); cursor: pointer; font-size: 10px; font-family: inherit; letter-spacing: 1px; transition: color 0.2s; }
+.panel-rebuild:hover { color: var(--text); }
+.panel-section { padding: 12px 16px; border-bottom: 1px solid rgba(80,160,255,0.05); }
+.section-label { font-size: 9px; letter-spacing: 3px; color: rgba(120,180,255,0.55); text-transform: uppercase; margin-bottom: 12px; }
+.panel-footer { flex-shrink: 0; padding: 10px 16px; border-top: 1px solid rgba(80,160,255,0.08); display: flex; align-items: center; justify-content: space-between; background: var(--panel-bg); }
+.panel-footer-text { font-size: 9px; letter-spacing: 1.5px; color: rgba(120,180,255,0.45); text-transform: uppercase; }
+.panel-footer-icons { display: flex; gap: 10px; align-items: center; }
+.panel-footer-icons a { color: rgba(120,180,255,0.4); transition: color 0.2s; display: flex; align-items: center; }
+.panel-footer-icons a:hover { color: rgba(160,210,255,0.85); }
+.presets { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 4px; }
+.preset-btn { padding: 7px 4px; border: 1px solid rgba(80,160,255,0.1); background: transparent; color: var(--text-muted); border-radius: 2px; cursor: pointer; font-size: 10px; font-family: inherit; letter-spacing: 1px; transition: all 0.2s; }
+.preset-btn:hover { border-color: rgba(80,160,255,0.35); color: var(--text); }
+.preset-btn.active { border-color: rgba(80,160,255,0.5); color: var(--accent); }
+.control { margin-bottom: 10px; }
+.control-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+.control-label { font-size: 11px; color: rgba(200,230,255,0.6); }
+.control-value { font-size: 10px; color: var(--text-muted); min-width: 32px; text-align: right; }
+input[type=range] { width: 100%; height: 1px; -webkit-appearance: none; background: rgba(80,160,255,0.15); border-radius: 1px; outline: none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; background: rgba(80,160,255,0.7); border-radius: 50%; cursor: pointer; }
+.toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.toggle-label { font-size: 11px; color: rgba(200,230,255,0.6); }
+.toggle { width: 28px; height: 16px; background: rgba(80,160,255,0.12); border-radius: 8px; position: relative; cursor: pointer; transition: background 0.2s; border: none; }
+.toggle.on { background: rgba(80,160,255,0.5); }
+.toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: rgba(200,230,255,0.4); border-radius: 50%; transition: transform 0.2s; }
+.toggle.on::after { transform: translateX(12px); background: rgba(200,230,255,0.9); }
+select { width: 100%; padding: 5px 8px; background: rgba(80,160,255,0.04); border: 1px solid rgba(80,160,255,0.1); color: var(--text); border-radius: 2px; font-size: 11px; font-family: inherit; cursor: pointer; outline: none; }
+select option { background: #040e1e; }
+.export-btns { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; }
+.btn-export { padding: 8px; border: 1px solid rgba(80,160,255,0.12); background: transparent; color: var(--text-muted); border-radius: 2px; cursor: pointer; font-size: 10px; font-family: inherit; letter-spacing: 1px; text-align: center; transition: all 0.2s; }
+.btn-export:hover { background: rgba(80,160,255,0.06); border-color: rgba(80,160,255,0.35); color: var(--text); }
+.btn-export.primary { border-color: rgba(80,160,255,0.25); color: var(--text); }
+.btn-export.share { color: rgba(29,161,242,0.7); border-color: rgba(29,161,242,0.2); }
+
+/* ── Tooltip ── */
+#tooltip { position: absolute; pointer-events: none; background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 2px; padding: 8px 12px; font-size: 11px; color: var(--text); z-index: 30; opacity: 0; transition: opacity 0.12s; max-width: 220px; }
+#tooltip.visible { opacity: 1; }
+.tip-name { font-size: 12px; color: var(--accent); margin-bottom: 4px; letter-spacing: 0.5px; }
+.tip-meta { color: var(--text-muted); font-size: 10px; line-height: 1.6; }
+.tip-cluster { color: rgba(80,160,255,0.5); font-size: 10px; margin-top: 3px; }
+
+/* ── Recording ── */
+#rec-indicator { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(200,40,40,0.85); color: white; padding: 5px 14px; border-radius: 20px; font-size: 11px; z-index: 30; display: none; align-items: center; gap: 8px; font-family: inherit; letter-spacing: 1px; }
+#rec-indicator.active { display: flex; }
+.rec-dot { width: 6px; height: 6px; background: white; border-radius: 50%; animation: blink 1s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+/* ── Filter pills ── */
+.filter-pills { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.type-pill { padding: 3px 8px; border: 1px solid rgba(80,160,255,0.15); background: rgba(80,160,255,0.04); color: rgba(200,230,255,0.5); border-radius: 2px; cursor: pointer; font-size: 10px; font-family: inherit; letter-spacing: 1px; transition: opacity 0.2s; }
+.type-pill.off { opacity: 0.25; }
+.type-pill:hover { border-color: rgba(80,160,255,0.4); }
+
+/* ── Cluster legend ── */
+#cluster-legend { position: absolute; bottom: 20px; left: 16px; z-index: 20; display: flex; flex-direction: column; gap: 5px; }
+#cluster-legend.hidden { display: none; }
+.cluster-entry { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--text-muted); letter-spacing: 0.5px; }
+.cluster-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Guide section ── */
+.guide-steps { list-style: none; margin: 8px 0 10px; display: flex; flex-direction: column; gap: 7px; }
+.guide-steps li { font-size: 10px; color: rgba(200,230,255,0.55); line-height: 1.6; padding-left: 14px; position: relative; letter-spacing: 0.3px; }
+.guide-steps li::before { content: attr(data-n); position: absolute; left: 0; color: rgba(80,160,255,0.35); }
+.guide-steps code { color: rgba(88,184,255,0.8); font-family: inherit; font-size: 10px; }
+.guide-steps a { color: rgba(80,160,255,0.6); text-decoration: none; }
+.guide-steps a:hover { color: rgba(80,160,255,0.95); }
+.guide-toggle { background: none; border: none; color: var(--text-muted); cursor: pointer; font-family: inherit; font-size: 9px; letter-spacing: 3px; text-transform: uppercase; display: flex; align-items: center; gap: 6px; width: 100%; padding: 0; margin-bottom: 0; }
+.guide-toggle:hover { color: var(--text); }
+.guide-body { overflow: hidden; max-height: 0; transition: max-height 0.25s ease; }
+.guide-body.open { max-height: 400px; }
+</style>
+</head>
+<body>
+
+<canvas id="three-canvas"></canvas>
+
+<div id="drop-zone">
+  <h1>Neural</h1>
+  <div class="drop-ring"><div class="drop-icon">◎</div></div>
+  <p>drop neural.json here</p>
+  <button class="btn-upload" id="btn-browse">browse file</button>
+  <div class="example-links">
+    <span style="font-size:11px;color:rgba(160,200,255,0.6);letter-spacing:1px">examples:</span>
+    <button class="example-link" onclick="loadExample('neural_minimal')">neural_minimal</button>
+  </div>
+  <input type="file" id="file-input" accept=".json">
+  <div style="margin-top:14px;display:flex;flex-direction:column;align-items:center;gap:10px">
+    <button onclick="openNeuralGenModal()" style="background:none;border:none;cursor:pointer;font-size:11px;color:rgba(80,160,255,0.75);letter-spacing:1px;font-family:inherit;padding:0" onmouseover="this.style.color='rgba(80,160,255,1)'" onmouseout="this.style.color='rgba(80,160,255,0.75)'">Generate Agent's Neural.json</button>
+    <button onclick="openServiceModal()" style="background:none;border:none;cursor:pointer;font-size:11px;color:rgba(80,160,255,0.75);letter-spacing:1px;font-family:inherit;padding:0" onmouseover="this.style.color='rgba(80,160,255,1)'" onmouseout="this.style.color='rgba(80,160,255,0.75)'">Neural — A2A Service API</button>
+  </div>
+</div>
+
+<div id="topbar" class="hidden">
+  <span class="topbar-title" onclick="resetToHome()" style="cursor:pointer" title="Back to home">Neural</span>
+  <span class="topbar-meta" id="meta-text"></span>
+</div>
+<button id="toggle-panel" class="hidden" onclick="togglePanel()">⊞ params</button>
+
+<div id="panel" class="hidden">
+  <div class="panel-header">
+    <span class="panel-title">Parameters</span>
+    <button class="panel-rebuild" onclick="resetParams();renderGraph()">rebuild</button>
+  </div>
+
+  <div id="panel-scroll">
+  <div class="panel-section">
+    <div class="section-label">Theme</div>
+    <div class="presets">
+      <button class="preset-btn active" onclick="setTheme('sci-fi',this)">Sci-fi</button>
+      <button class="preset-btn" onclick="setTheme('cosmos',this)">Cosmos</button>
+      <button class="preset-btn" onclick="setTheme('matrix',this)">Matrix</button>
+      <button class="preset-btn" onclick="setTheme('solar',this)">Solar</button>
+      <button class="preset-btn" onclick="setTheme('void',this)">Void</button>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="section-label">Bloom</div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Strength</span><span class="control-value" id="val-bloom">1.8</span></div>
+      <input type="range" min="0" max="4" step="0.1" value="1.8" oninput="setBloom('strength',this)">
+    </div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Radius</span><span class="control-value" id="val-bloomr">0.6</span></div>
+      <input type="range" min="0" max="2" step="0.05" value="0.6" oninput="setBloom('radius',this)">
+    </div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Threshold</span><span class="control-value" id="val-bloomt">0.1</span></div>
+      <input type="range" min="0" max="1" step="0.02" value="0.1" oninput="setBloom('threshold',this)">
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="section-label">Layout</div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Cluster spread</span><span class="control-value" id="val-cspread">300</span></div>
+      <input type="range" min="80" max="800" step="20" value="300" oninput="setPhysics('clusterSpread',this)">
+    </div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Z spread</span><span class="control-value" id="val-zspread">320</span></div>
+      <input type="range" min="0" max="900" step="20" value="320" oninput="setPhysics('zSpread',this)">
+    </div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Orbit radius</span><span class="control-value" id="val-orbitradius">1</span></div>
+      <input type="range" min="0.1" max="1.5" step="0.05" value="1" oninput="setPhysics('orbitRadius',this)">
+    </div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Sub spread</span><span class="control-value" id="val-subspread">0.42</span></div>
+      <input type="range" min="0.1" max="0.9" step="0.05" value="0.42" oninput="setPhysics('subSpread',this)">
+    </div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Drift</span><span class="control-value" id="val-zstrength">0.5</span></div>
+      <input type="range" min="0" max="1" step="0.05" value="0.5" oninput="setPhysics('zStrength',this)">
+    </div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Orbit speed</span><span class="control-value" id="val-orbitspeed">0.5</span></div>
+      <input type="range" min="0" max="3" step="0.1" value="0.5" oninput="setPhysics('orbitSpeed',this)">
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="section-label">Nodes</div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Size scale</span><span class="control-value" id="val-scale">0.5</span></div>
+      <input type="range" min="0.2" max="3" step="0.1" value="0.5" oninput="setVisual('scale',this)">
+    </div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Core size</span><span class="control-value" id="val-coresize">2.5</span></div>
+      <input type="range" min="1" max="6" step="0.1" value="2.5" oninput="setVisual('coreSize',this)">
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Pulse (anchor + files)</span>
+      <button class="toggle on" id="toggle-pulse" onclick="toggleOpt('pulse',this)"></button>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Labels</span>
+      <button class="toggle on" id="toggle-labels" onclick="toggleOpt('labels',this)"></button>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Cluster labels</span>
+      <button class="toggle on" id="toggle-clusterlabels" onclick="toggleOpt('clusterLabels',this)"></button>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Particles on edges</span>
+      <button class="toggle on" id="toggle-particles" onclick="toggleOpt('particles',this)"></button>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="section-label">Edges</div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Opacity</span><span class="control-value" id="val-edge-opacity">0.45</span></div>
+      <input type="range" min="0.05" max="1" step="0.05" value="0.45" oninput="setVisual('edgeOpacity',this)">
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Color by type</span>
+      <button class="toggle on" id="toggle-edgecolor" onclick="toggleOpt('edgeColor',this)"></button>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Highlight cross-cluster</span>
+      <button class="toggle on" id="toggle-crossedge" onclick="toggleOpt('crossEdge',this)"></button>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="section-label">Filter</div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Min connections</span><span class="control-value" id="val-mindegree">0</span></div>
+      <input type="range" min="0" max="10" step="1" value="0" oninput="setFilter('minDegree',this)">
+    </div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Max nodes</span><span class="control-value" id="val-maxnodes">all</span></div>
+      <input type="range" min="10" max="500" step="10" value="500" oninput="setFilter('maxNodes',this)">
+    </div>
+    <div class="section-label" style="margin-top:10px">Tiers</div>
+    <div class="filter-pills" id="tier-filters"></div>
+  </div>
+
+  <div class="panel-section">
+    <div class="section-label">Animation</div>
+    <div class="control">
+      <div class="control-row"><span class="control-label">Build duration</span></div>
+      <select id="anim-duration">
+        <option value="1000">3 seconds</option>
+        <option value="3000" selected>5 seconds</option>
+        <option value="8000">10 seconds</option>
+      </select>
+    </div>
+    <div class="control" style="margin-top:8px">
+      <div class="control-row"><span class="control-label">Style</span></div>
+      <select id="anim-style">
+        <option value="pop">Scale-in pop</option>
+        <option value="edges">Progressive edges</option>
+
+        <option value="all" selected>All combined</option>
+      </select>
+    </div>
+    <button class="btn-export primary" style="margin-top:10px;width:100%" onclick="playAnimation()">▶ Play animation</button>
+  </div>
+
+  <div class="export-btns">
+    <div class="section-label" style="padding:0 0 8px">Export</div>
+    <button class="btn-export primary" onclick="exportPNG()">Export PNG</button>
+    <button class="btn-export" onclick="exportVideo()">Export video (WebM)</button>
+    <button class="btn-export share" onclick="shareToX()">Share to X ↗</button>
+  </div>
+
+  <div class="panel-section">
+    <button class="guide-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.guide-arr').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+      <span class="guide-arr">▸</span> How to use
+    </button>
+    <div class="guide-body">
+      <ol class="guide-steps">
+        <li data-n="1">Get neural-gen (no install needed):<br>
+          <code>git clone github.com/yellowagmi/neural-gen</code><br>
+          <span style="color:rgba(80,160,255,0.3)">or</span> <button onclick="openNeuralGenModal()" style="background:none;border:none;cursor:pointer;color:#58b8ff;font-family:inherit;font-size:inherit;padding:0">neural-gen.zip ↓</button></li>
+        <li data-n="2">Run in your project root (auto-detects anchor file):<br>
+          <code>node src/cli.mjs</code><br>
+          <span style="color:rgba(80,160,255,0.3)">or target a file:</span><br>
+          <code>node src/cli.mjs --file CLAUDE.md</code></li>
+        <li data-n="3">Output: <code>neural-graph/neural_&lt;timestamp&gt;.json</code></li>
+        <li data-n="4">Drop the JSON into this visualiser<br>
+          (drag &amp; drop or browse)</li>
+        <li data-n="5">Or POST to <code>/generate</code> to process<br>
+          server-side and mint an NFT on Solana</li>
+      </ol>
+      <div style="display:flex;gap:6px;margin-top:4px">
+        <a href="https://github.com/yellowagmi/neural-gen" target="_blank" style="flex:1">
+          <button class="btn-export" style="width:100%">GitHub ↗</button>
+        </a>
+        <button class="btn-export primary" style="width:100%;flex:1" onclick="openNeuralGenModal()">⬇ ZIP</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <button class="guide-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.guide-arr').textContent=this.nextElementSibling.classList.contains('open')?'▾':'▸'">
+      <span class="guide-arr">▸</span> About / API
+    </button>
+    <div class="guide-body">
+      <p style="font-size:11px;line-height:1.6;color:rgba(200,230,255,0.6);margin-bottom:10px">
+        Agent-to-Agent knowledge graph generation + NFT minting on Solana.<br>
+        Agent A sends markdown docs → Neural maps the knowledge graph → anchors a Solana memo receipt → mints a Metaplex Core NFT → returns graph + on-chain proof.
+      </p>
+      <div style="font-size:10px;color:rgba(80,160,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Endpoints</div>
+      <div style="font-size:10px;line-height:1.9">
+        <div style="display:flex;gap:8px"><span style="color:#58b8ff;width:32px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.8)">/health</span><span style="color:rgba(80,160,255,0.3);margin-left:auto">status</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#58b8ff;width:32px;flex-shrink:0">POST</span><span style="color:rgba(200,230,255,0.8)">/generate</span><span style="color:rgba(80,160,255,0.3);margin-left:auto">graph + NFT (x402)</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#58b8ff;width:32px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.8)">/graphs</span><span style="color:rgba(80,160,255,0.3);margin-left:auto">list graphs</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#58b8ff;width:32px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.8)">/graphs/:id</span><span style="color:rgba(80,160,255,0.3);margin-left:auto">graph JSON</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#58b8ff;width:32px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.8)">/download/:id</span><span style="color:rgba(80,160,255,0.3);margin-left:auto">agent ZIP (NFT key)</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#58b8ff;width:32px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.8)">/download/skill</span><span style="color:rgba(80,160,255,0.3);margin-left:auto">neural-gen ZIP</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#58b8ff;width:32px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.8)">/reputation/:wallet</span><span style="color:rgba(80,160,255,0.3);margin-left:auto">trust score</span></div>
+      </div>
+      <p style="font-size:10px;color:rgba(80,160,255,0.35);margin-top:10px">Demo: set <code style="color:#58b8ff">X-PAYMENT: demo-access</code> to bypass x402.</p>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <a href="/health" target="_blank" style="flex:1"><button class="btn-export" style="width:100%">health</button></a>
+        <a href="/graphs" target="_blank" style="flex:1"><button class="btn-export" style="width:100%">graphs</button></a>
+      </div>
+    </div>
+  </div>
+  </div><!-- end panel-scroll -->
+
+  <div class="panel-footer">
+    <span class="panel-footer-text">MADE WITH <span style="color:#ff3333;font-size:20px;line-height:1;vertical-align:middle">❤</span> BY <span style="color:#e8ff00;text-shadow:0 0 8px #e8ff00,0 0 16px rgba(232,255,0,0.4)">YELLOWAGMI</span></span>
+    <div class="panel-footer-icons">
+      <a href="https://x.com/yellowagmi" target="_blank" title="X / Twitter">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+      </a>
+      <a href="https://github.com/yellowagmi" target="_blank" title="GitHub">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Neural-gen modal -->
+<div id="neural-gen-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(2,8,18,0.92);backdrop-filter:blur(6px);align-items:center;justify-content:center">
+  <div style="background:#020d18;border:1px solid rgba(80,160,255,0.18);border-radius:8px;max-width:520px;width:90%;max-height:85vh;overflow-y:auto;padding:28px;position:relative;font-family:'SF Mono','Fira Code',monospace">
+    <button onclick="closeNeuralGenModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;cursor:pointer;color:rgba(80,160,255,0.5);font-size:18px;line-height:1" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(80,160,255,0.5)'">✕</button>
+    <h2 style="color:#fff;font-size:16px;letter-spacing:2px;margin-bottom:4px">neural-gen</h2>
+    <p style="font-size:11px;color:rgba(80,160,255,0.5);letter-spacing:1px;margin-bottom:20px">standalone markdown scanner</p>
+
+    <p style="font-size:12px;color:rgba(200,230,255,0.65);line-height:1.7;margin-bottom:20px">
+      neural-gen scans your agent's markdown docs and maps all internal links into a knowledge graph JSON file. Drop that file into this visualiser — or POST it to <code style="color:#58b8ff">/generate</code> to get a 3D graph + Solana NFT minted on-chain.
+    </p>
+
+    <div style="font-size:10px;color:rgba(80,160,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">Download</div>
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <a href="/download/skill" download style="flex:1">
+        <button class="btn-export primary" style="width:100%;font-size:11px">⬇ Download ZIP (this server)</button>
+      </a>
+      <a href="https://github.com/yellowagmi/neural-gen" target="_blank" style="flex:1">
+        <button class="btn-export" style="width:100%;font-size:11px">GitHub ↗</button>
+      </a>
+    </div>
+
+    <div style="background:rgba(80,160,255,0.04);border:1px solid rgba(80,160,255,0.1);border-radius:4px;padding:14px;margin-bottom:20px;font-size:11px;color:rgba(200,230,255,0.5);line-height:1.8">
+      <strong style="color:rgba(200,230,255,0.8);display:block;margin-bottom:6px">GitHub download guide</strong>
+      1. Go to <a href="https://github.com/yellowagmi/neural-gen" target="_blank" style="color:#58b8ff">github.com/yellowagmi/neural-gen</a><br>
+      2. Click the green <strong style="color:rgba(200,230,255,0.8)">Code</strong> button → <strong style="color:rgba(200,230,255,0.8)">Download ZIP</strong><br>
+      &nbsp;&nbsp;&nbsp;or clone: <code style="color:#58b8ff">git clone https://github.com/yellowagmi/neural-gen</code>
+    </div>
+
+    <div style="font-size:10px;color:rgba(80,160,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">How to use</div>
+    <ol style="list-style:none;padding:0;font-size:11px;color:rgba(200,230,255,0.6);line-height:1;counter-reset:steps">
+      <li style="display:flex;gap:10px;margin-bottom:12px"><span style="color:#58b8ff;flex-shrink:0;width:16px">1.</span><span>Unzip / clone neural-gen — no install needed, zero dependencies</span></li>
+      <li style="display:flex;gap:10px;margin-bottom:12px"><span style="color:#58b8ff;flex-shrink:0;width:16px">2.</span><span>Run in your project root (auto-detects anchor file):<br><code style="color:#58b8ff;background:rgba(80,160,255,0.07);padding:3px 6px;border-radius:3px;display:inline-block;margin-top:4px">node src/cli.mjs</code><br><span style="color:rgba(80,160,255,0.4);font-size:10px;display:inline-block;margin-top:4px">or target a specific file:</span><br><code style="color:#58b8ff;background:rgba(80,160,255,0.07);padding:3px 6px;border-radius:3px;display:inline-block;margin-top:2px">node src/cli.mjs --file CLAUDE.md</code></span></li>
+      <li style="display:flex;gap:10px;margin-bottom:12px"><span style="color:#58b8ff;flex-shrink:0;width:16px">3.</span><span>Output saved to:<br><code style="color:#58b8ff;background:rgba(80,160,255,0.07);padding:3px 6px;border-radius:3px;display:inline-block;margin-top:4px">neural-graph/neural_&lt;timestamp&gt;.json</code></span></li>
+      <li style="display:flex;gap:10px;margin-bottom:12px"><span style="color:#58b8ff;flex-shrink:0;width:16px">4.</span><span>Drop the JSON into this visualiser (drag &amp; drop or browse), or POST to <code style="color:#58b8ff">/generate</code> to mint an NFT on Solana</span></li>
+    </ol>
+  </div>
+</div>
+
+<div id="cluster-legend" class="hidden"></div>
+<div id="tooltip"><div class="tip-name" id="tip-name"></div><div class="tip-meta" id="tip-meta"></div><div class="tip-cluster" id="tip-cluster"></div></div>
+<div id="rec-indicator"><div class="rec-dot"></div>rec <span id="rec-time"></span></div>
+
+<!-- A2A Service API modal -->
+<div id="service-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(2,8,18,0.92);backdrop-filter:blur(6px);align-items:center;justify-content:center">
+  <div style="background:#020d18;border:1px solid rgba(80,160,255,0.18);border-radius:8px;max-width:520px;width:90%;max-height:85vh;overflow-y:auto;padding:28px;position:relative;font-family:'SF Mono','Fira Code',monospace">
+    <button onclick="closeServiceModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;cursor:pointer;color:rgba(80,160,255,0.5);font-size:18px;line-height:1" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(80,160,255,0.5)'">✕</button>
+    <h2 style="color:#fff;font-size:16px;letter-spacing:2px;margin-bottom:4px">Neural</h2>
+    <p style="font-size:11px;color:rgba(80,160,255,0.5);letter-spacing:1px;margin-bottom:20px">A2A Service API</p>
+
+    <div style="background:rgba(80,160,255,0.04);border:1px solid rgba(80,160,255,0.1);border-radius:4px;padding:14px;margin-bottom:20px;font-size:12px;color:rgba(200,230,255,0.55);line-height:1.8">
+      <strong style="color:rgba(200,230,255,0.85)">Agent A</strong> sends markdown docs &rarr;
+      <strong style="color:rgba(200,230,255,0.85)">Neural</strong> generates knowledge graph &rarr;
+      anchors Solana memo receipt &rarr;
+      mints Metaplex Core NFT &rarr;
+      returns graph + on-chain proof to Agent A
+    </div>
+
+    <div style="font-size:10px;color:rgba(80,160,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">Endpoints</div>
+    <div style="font-size:11px;line-height:2;margin-bottom:20px">
+      <div style="display:flex;gap:10px"><span style="color:#58b8ff;width:40px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.85)">/health</span><span style="color:rgba(80,160,255,0.35);margin-left:auto;font-size:10px">status</span></div>
+      <div style="display:flex;gap:10px"><span style="color:#58b8ff;width:40px;flex-shrink:0">POST</span><span style="color:rgba(200,230,255,0.85)">/generate</span><span style="color:rgba(80,160,255,0.35);margin-left:auto;font-size:10px">graph + NFT (x402)</span></div>
+      <div style="display:flex;gap:10px"><span style="color:#58b8ff;width:40px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.85)">/graphs</span><span style="color:rgba(80,160,255,0.35);margin-left:auto;font-size:10px">list graphs</span></div>
+      <div style="display:flex;gap:10px"><span style="color:#58b8ff;width:40px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.85)">/graphs/:id</span><span style="color:rgba(80,160,255,0.35);margin-left:auto;font-size:10px">graph JSON</span></div>
+      <div style="display:flex;gap:10px"><span style="color:#58b8ff;width:40px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.85)">/download/:id</span><span style="color:rgba(80,160,255,0.35);margin-left:auto;font-size:10px">agent ZIP (NFT key)</span></div>
+      <div style="display:flex;gap:10px"><span style="color:#58b8ff;width:40px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.85)">/download/skill</span><span style="color:rgba(80,160,255,0.35);margin-left:auto;font-size:10px">neural-gen ZIP</span></div>
+      <div style="display:flex;gap:10px"><span style="color:#58b8ff;width:40px;flex-shrink:0">GET</span><span style="color:rgba(200,230,255,0.85)">/reputation/:wallet</span><span style="color:rgba(80,160,255,0.35);margin-left:auto;font-size:10px">trust score</span></div>
+    </div>
+
+    <p style="font-size:10px;color:rgba(80,160,255,0.4);margin-bottom:16px">Demo: set <code style="color:#58b8ff">X-PAYMENT: demo-access</code> header to bypass x402.</p>
+
+    <div style="background:rgba(255,160,60,0.05);border:1px solid rgba(255,160,60,0.2);border-radius:4px;padding:12px;font-size:10px;color:rgba(255,200,100,0.7);line-height:1.7;margin-bottom:16px">
+      ⚠ NFT minting runs on Solana devnet. When the service wallet's SOL is depleted, minting falls back to a simulated address. Graph generation is always available.
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <a href="/health" target="_blank" style="flex:1"><button class="btn-export" style="width:100%;font-size:11px">health ↗</button></a>
+      <a href="/graphs" target="_blank" style="flex:1"><button class="btn-export" style="width:100%;font-size:11px">graphs ↗</button></a>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+
+<script>
+'use strict';
+
+// ── Themes ────────────────────────────────────────────────────────────────────
+const THEMES = {
+  'sci-fi': {
+    bg: 0x020d18,
+    node: { doc:0x58b8ff, code:0x38e8ff, config:0x78ff88, shell:0xa888ff, file:0x80d0ff, anchor:0xffffff },
+    fileGlow: 0x203860,
+    anchorMid: 0xa0d8ff,
+    edge: { import:0x38e8ff, mention:0x2860a0, anchor:0x0a2040, contains:0x1a4060, references:0x4090c0, similarity:0x0a1a30, cross:0x60c0ff },
+    bloom: { strength:0.8, radius:0.6, threshold:0.1 },
+    clusterColors: [0x3080ff,0x30c0a0,0xc060ff,0xff8030,0x60ff80,0xff4080,0x80c0ff,0xffc040],
+  },
+  cosmos: {
+    bg: 0x000000,
+    node: { doc:0xe8e8e8, code:0xa8c8f8, config:0xf8c878, shell:0xa8f8c8, file:0xd8e8f8, anchor:0xffffff },
+    fileGlow: 0x303040,
+    anchorMid: 0xdddddd,
+    edge: { import:0xa8c8f8, mention:0x505050, anchor:0x1a1a1a, contains:0x303030, references:0x809090, similarity:0x252525, cross:0xd0d0ff },
+    bloom: { strength:1.2, radius:0.5, threshold:0.15 },
+    clusterColors: [0xa8c8f8,0xf8c878,0xa8f8c8,0xf8a8c8,0xd8a8f8,0xa8f8f8,0xf8d8a8,0xc8c8f8],
+  },
+  matrix: {
+    bg: 0x000800,
+    node: { doc:0x00ff41, code:0x00ee30, config:0x00ff99, shell:0x88ff00, file:0x40ff80, anchor:0xffffff },
+    fileGlow: 0x003010,
+    anchorMid: 0x80ff80,
+    edge: { import:0x00ff41, mention:0x007020, anchor:0x001a08, contains:0x002810, references:0x00c030, similarity:0x001808, cross:0x80ffaa },
+    bloom: { strength:0.8, radius:0.5, threshold:0.05 },
+    clusterColors: [0x00ff41,0x00ee99,0x80ff00,0x00c0ff,0xccff00,0x00ffc0,0x80ee00,0x00ee60],
+  },
+  solar: {
+    bg: 0x020818,
+    node: { doc:0xffd060, code:0xff9030, config:0x80d0ff, shell:0xffb860, file:0xffc040, anchor:0xffffff },
+    fileGlow: 0x402010,
+    anchorMid: 0xffe0a0,
+    edge: { import:0xff9030, mention:0x804010, anchor:0x200800, contains:0x381400, references:0xd07020, similarity:0x301000, cross:0xffd080 },
+    bloom: { strength:1, radius:0.2, threshold:0.26 },
+    clusterColors: [0xffd060,0xff8030,0x60d0ff,0xffb020,0x80ff80,0xff6080,0xc0a0ff,0x40d0c0],
+  },
+  void: {
+    bg: 0x000000,
+    node: { doc:0x2040ff, code:0x4080ff, config:0x6060ff, shell:0x2060c0, file:0x3060e0, anchor:0xffffff },
+    fileGlow: 0x080820,
+    anchorMid: 0x6080ff,
+    edge: { import:0x2040ff, mention:0x101880, anchor:0x050812, contains:0x0a1030, references:0x1828c0, similarity:0x080a20, cross:0x8090ff },
+    bloom: { strength:0, radius:0.8, threshold:0.06 },
+    clusterColors: [0x2040ff,0x6020ff,0x0080ff,0x4000ff,0x2080c0,0x8040ff,0x0060e0,0x4060ff],
+  },
+};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let graphData = null, currentTheme = 'sci-fi';
+let activeTiers = new Set();
+let panelVisible = true, animFrameId = null, mediaRecorder = null, simulation = null;
+let spawnProg = 0;
+let renderer, scene, camera, composer, bloomPass, controls;
+const nodeMeshes = [];
+let edgeLines = null, particleSystem = null, starfield = null;
+let synapsePulses = null, synapseLinks = [];
+let nodeMapCache = {};
+let clusterLabelSprites = [];
+let clusterCentroids = {};
+
+  let params = {
+    clusterSpread:300, zSpread:320, zStrength:0.5, subSpread:0.42, orbitSpeed:0.5, orbitRadius:1.0,
+    scale:0.5, coreSize:2.5,
+  pulse:true, labels:true, clusterLabels:true,
+  particles:true, edgeColor:true, edgeOpacity:0.45, crossEdge:true,
+  minDegree:0, maxNodes:500,
+  bloom:{ strength:0.8, radius:0.6, threshold:0.1 },
+};
+
+// ── Three.js init ─────────────────────────────────────────────────────────────
+function cW(){ return window.innerWidth - (panelVisible ? 264 : 0); }
+
+function initThree(){
+  renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(cW(), window.innerHeight);
+  renderer.toneMapping = THREE.ReinhardToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(THEMES[currentTheme].bg);
+  camera = new THREE.PerspectiveCamera(60, cW()/window.innerHeight, 0.1, 6000);
+  camera.position.set(0, 380, 450);
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.07;
+  controls.autoRotate = true; controls.autoRotateSpeed = 0.5;
+  controls.minDistance = 40; controls.maxDistance = 3000;
+  composer = new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+  bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(cW(), window.innerHeight), params.bloom.strength, params.bloom.radius, params.bloom.threshold);
+  composer.addPass(bloomPass);
+  window.addEventListener('resize', onResize);
+  renderer.domElement.addEventListener('mousemove', onMouseMove);
+  renderer.domElement.addEventListener('click', onCanvasClick);
+}
+
+function onResize(){
+  const w = cW(), h = window.innerHeight;
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+  renderer.setSize(w,h); composer.setSize(w,h); bloomPass.resolution.set(w,h);
+}
+
+// ── Raycasting ────────────────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+let hoveredNode = null;
+
+function onMouseMove(e){
+  mouse.x = (e.clientX/cW())*2-1;
+  mouse.y = -(e.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(nodeMeshes.map(n=>n.haloMesh));
+  if(hits.length){
+    const nm = nodeMeshes.find(n=>n.haloMesh===hits[0].object);
+    if(nm){ showTooltip(e,nm.data); hoveredNode=nm; document.body.style.cursor='pointer'; return; }
+  }
+  hideTooltip(); hoveredNode=null; document.body.style.cursor='default';
+}
+function onCanvasClick(){ if(hoveredNode) controls.target.lerp(hoveredNode.group.position, 0.5); }
+
+// ── Fibonacci layout helpers (cozy.im approach) ──────────────────────────────
+function seededRand(seed){
+  let s = seed;
+  return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+}
+function fibSphere(n, radius, cx, cy, cz, rand, yJitter=0){
+  const phi = (1 + Math.sqrt(5)) / 2;
+  const pts = [];
+  for(let i=0; i<n; i++){
+    const theta = (2 * Math.PI * i) / phi;
+    const y = 1 - (2 * i + 1) / Math.max(n, 2);
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    pts.push({
+      x: cx + radius * r * Math.cos(theta),
+      y: cy + radius * y + (rand() - 0.5) * yJitter,
+      z: cz + radius * r * Math.sin(theta)
+    });
+  }
+  return pts;
+}
+
+// ── Cluster centroid seeding ──────────────────────────────────────────────────
+function seedClusterPositions(nodes){
+  clusterCentroids = {};
+  const t = THEMES[currentTheme];
+  const anchorNode = nodes.find(n => n.tier==='anchor' || n.anchor);
+  const anchorCluster = anchorNode ? (anchorNode.cluster || 'anchor') : 'anchor';
+  clusterCentroids[anchorCluster] = { x:0, y:0, z:0, color: t.clusterColors[0] };
+
+  const fileClusters = [...new Set(nodes.filter(n=>n.tier==='file').map(n=>n.cluster).filter(Boolean))];
+  const R = params.clusterSpread * (params.orbitRadius||1.0);
+  const n3d = fileClusters.length;
+  fileClusters.forEach((cl, i) => {
+    if(clusterCentroids[cl]) return; // skip anchor cluster if it's already set
+    // Fibonacci sphere — evenly distributes clusters across all 3 axes
+    const phi   = Math.acos(1 - 2 * (i + 0.5) / Math.max(n3d, 2)); // polar 0→π
+    const theta = i * Math.PI * (3 - Math.sqrt(5));                  // golden angle azimuth
+    clusterCentroids[cl] = {
+      x: Math.sin(phi) * Math.cos(theta) * R,
+      y: Math.sin(phi) * Math.sin(theta) * R,
+      z: Math.cos(phi) * params.zSpread * 0.9,
+      color: t.clusterColors[(i+1) % t.clusterColors.length],
+    };
+  });
+  clusterCentroids['shared'] = { x:0, y:0, z:0, color:0xffffff };
+}
+
+function nodeClusterTarget(d){
+  if(d.shared && d.clusterIds && d.clusterIds.length){
+    let tx=0,ty=0,tz=0,n=0;
+    d.clusterIds.forEach(cl => {
+      const c = clusterCentroids[cl];
+      if(c){ tx+=c.x; ty+=c.y; tz+=c.z; n++; }
+    });
+    if(n) return {x:tx/n, y:ty/n, z:tz/n};
+  }
+  return clusterCentroids[d.cluster] || {x:0,y:0,z:0};
+}
+
+// ── Build scene ───────────────────────────────────────────────────────────────
+function buildScene(nodes, links){
+  if(animFrameId) cancelAnimationFrame(animFrameId);
+  while(scene.children.length) scene.remove(scene.children[0]);
+  nodeMeshes.length = 0; clusterLabelSprites = []; nodeMapCache = {};
+  edgeLines = null; particleSystem = null; synapsePulses = null; synapseLinks = [];
+
+  const t = THEMES[currentTheme];
+  scene.background = new THREE.Color(t.bg);
+  bloomPass.strength = params.bloom.strength;
+  bloomPass.radius = params.bloom.radius;
+  bloomPass.threshold = params.bloom.threshold;
+
+  seedClusterPositions(nodes);
+
+  // Starfield
+  const starPos = [];
+  for(let i=0;i<1200;i++) starPos.push((Math.random()-.5)*5000,(Math.random()-.5)*5000,(Math.random()-.5)*5000);
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos,3));
+  starfield = new THREE.Points(starGeo, new THREE.PointsMaterial({ color:0x1a3a60, size:0.7, transparent:true, opacity:0.4, blending:THREE.AdditiveBlending, depthWrite:false }));
+  scene.add(starfield);
+
+  // Nodes
+  nodes.forEach(d => {
+    const tier = d.tier || (d.anchor ? 'anchor' : 'section');
+    const isAnchor = tier === 'anchor' || d.anchor;
+    const isFile = tier === 'file';
+    const isShared = d.shared === true;
+
+    let baseR;
+    if(isAnchor)      baseR = 12 * params.scale * params.coreSize;
+    else if(isFile)   baseR = Math.max(8, Math.sqrt(d.size||1) * 1.5 * params.scale * params.coreSize);
+    else              baseR = Math.max(2, Math.sqrt(d.size||1) * 2.8 * params.scale);
+
+    const cent = clusterCentroids[d.cluster] || clusterCentroids['shared'];
+    const clusterCol = cent ? new THREE.Color(cent.color) : new THREE.Color(t.node[d.type]||t.node.doc);
+
+    const col = isAnchor ? new THREE.Color(t.node.anchor||0xffffff)
+      : isFile ? new THREE.Color(t.node.file||0x80d0ff)
+      : isShared ? new THREE.Color(0xffffff).lerp(clusterCol, 0.45)
+      : clusterCol;
+
+    const midCol = isAnchor ? new THREE.Color(t.anchorMid)
+      : isFile ? new THREE.Color(t.fileGlow)
+      : col.clone().multiplyScalar(0.45);
+
+    const group = new THREE.Group();
+
+    // Halo (raycasting target)
+    const haloR = baseR * (isAnchor ? 3.5 : isFile ? 3.0 : 3.2);
+    const haloMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(haloR, 10, 10),
+      new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:isAnchor?0.07:isFile?0.055:0.025, blending:THREE.AdditiveBlending, depthWrite:false })
+    );
+    group.add(haloMesh);
+
+    // Mid glow
+    group.add(new THREE.Mesh(
+      new THREE.SphereGeometry(baseR*1.6, 14, 14),
+      new THREE.MeshBasicMaterial({ color:midCol, transparent:true, opacity:isAnchor?0.4:isFile?0.3:0.18, blending:THREE.AdditiveBlending, depthWrite:false })
+    ));
+
+    // Main body
+    group.add(new THREE.Mesh(
+      new THREE.SphereGeometry(baseR, 18, 18),
+      new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.82, blending:THREE.AdditiveBlending, depthWrite:false })
+    ));
+
+    // White-hot core — brighter for shared nodes
+    group.add(new THREE.Mesh(
+      new THREE.SphereGeometry(baseR*(isAnchor?0.45:isShared?0.52:0.34), 10, 10),
+      new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:1.0, blending:THREE.AdditiveBlending, depthWrite:false })
+    ));
+
+    // Label
+    const label = makeLabel(d.label, isAnchor, isFile, col);
+    label.position.y = -(baseR + (isAnchor?16:isFile?14:10));
+    label.visible = params.labels;
+    group.add(label);
+
+    // ── Seed position — all start at (0,0,0) for animation compatibility ──
+    // The cluster target is stored so animateFlyIn can use it as the destination
+    const ct = nodeClusterTarget(d);
+    if(isAnchor){
+      group.position.set(0,0,0);
+      d.fx=0; d.fy=0; d.x=0; d.y=0;
+    } else {
+      // Place near cluster centroid so D3 settles correctly, but start at origin for animation
+      const scatter = isFile ? 50 : 140;
+      const sx = ct.x + (Math.random()-.5)*scatter;
+      const sy = ct.y + (Math.random()-.5)*scatter;
+      const sz = ct.z + (Math.random()-.5) * (params.zSpread * (isFile?0.55:1.1));
+      d.x = sx; d.y = sy; d._z = sz;
+      // Start at origin — animation will fly nodes out to their cluster positions
+      group.position.set(0, 0, 0);
+    }
+    d._clusterTarget = ct;
+
+    scene.add(group);
+    nodeMeshes.push({ group, haloMesh, label, data:d, baseR, tier });
+  });
+
+  // Cache node map
+  nodeMeshes.forEach(nm => nodeMapCache[nm.data.id] = nm);
+
+  buildEdgeLines(links, t);
+  buildSynapsePulses(links, t);
+  buildClusterLabels(t);
+  startLoop(nodes, links);
+  
+  // Build particles after D3 simulation starts so nodes have moved from origin
+  if(params.particles){
+    setTimeout(() => {
+      if(particleSystem){ scene.remove(particleSystem); particleSystem = null; }
+      buildParticles(links, t);
+    }, 500);
+  }
+}
+
+// ── Labels ────────────────────────────────────────────────────────────────────
+function makeLabel(text, isAnchor, isFile, col){
+  const dpr = Math.min(window.devicePixelRatio, 2);
+  const cw=320, ch=52;
+  const c = document.createElement('canvas');
+  c.width = cw*dpr; c.height = ch*dpr;
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const sz = isAnchor?18:isFile?15:13;
+  ctx.font = `${isAnchor?500:400} ${sz}px 'SF Mono','Fira Code',monospace`;
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#'+col.getHexString();
+  ctx.shadowBlur = isAnchor?10:isFile?7:3;
+  ctx.fillStyle = isAnchor?'#c0e8ff':isFile?'#88b8e0':'#3a5870';
+  ctx.fillText(text.length>28?text.slice(0,26)+'…':text, cw/2, ch/2+sz*0.35);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:new THREE.CanvasTexture(c), transparent:true, blending:THREE.AdditiveBlending, depthWrite:false }));
+  const sc = isAnchor?1.25:isFile?1.05:0.85;
+  sp.scale.set(cw*sc*0.22, ch*sc*0.22, 1);
+  return sp;
+}
+
+// ── Cluster name sprites ──────────────────────────────────────────────────────
+function buildClusterLabels(t){
+  clusterLabelSprites = [];
+  if(!params.clusterLabels) return;
+  const fileClusters = Object.keys(clusterCentroids).filter(k=>k!=='shared');
+  fileClusters.forEach((clName) => {
+    const cent = clusterCentroids[clName];
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    const cw=380, ch=44;
+    const canvas = document.createElement('canvas');
+    canvas.width=cw*dpr; canvas.height=ch*dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr,dpr);
+    ctx.font = '400 10px "SF Mono","Fira Code",monospace';
+    ctx.textAlign = 'center';
+    const hex = '#'+new THREE.Color(cent.color).getHexString();
+    ctx.fillStyle = hex+'55';
+    ctx.fillText(clName.toUpperCase(), cw/2, ch/2+4);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:new THREE.CanvasTexture(canvas), transparent:true, blending:THREE.AdditiveBlending, depthWrite:false }));
+    sp.scale.set(cw*0.26, ch*0.26, 1);
+    sp.position.set(cent.x, cent.y+80, cent.z);
+    sp.visible = params.clusterLabels;
+    scene.add(sp);
+    clusterLabelSprites.push({ sprite:sp, clName });
+  });
+}
+
+// ── Edges ─────────────────────────────────────────────────────────────────────
+function buildEdgeLines(links, t){
+  const pos=[], col=[];
+  links.forEach(lk => {
+    const sid = typeof lk.source==='object'?lk.source.id:lk.source;
+    const tid = typeof lk.target==='object'?lk.target.id:lk.target;
+    const s = nodeMapCache[sid], tg = nodeMapCache[tid];
+    if(!s||!tg) return;
+    pos.push(s.group.position.x,s.group.position.y,s.group.position.z,tg.group.position.x,tg.group.position.y,tg.group.position.z);
+    let ec;
+    const isRef = lk.type==='references';
+    if(params.crossEdge && isRef) ec = new THREE.Color(t.edge.cross||t.edge.references||0x4090c0);
+    else if(params.edgeColor) ec = new THREE.Color(t.edge[lk.type]||t.edge.mention);
+    else ec = new THREE.Color(0x102030);
+    col.push(ec.r,ec.g,ec.b,ec.r,ec.g,ec.b);
+  });
+  if(!pos.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(col),3));
+  edgeLines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors:true, transparent:true, opacity:params.edgeOpacity, blending:THREE.AdditiveBlending, depthWrite:false }));
+  scene.add(edgeLines);
+}
+
+function buildParticles(links, t){
+  const pos=[];
+  links.forEach(lk => {
+    const sid = typeof lk.source==='object'?lk.source.id:lk.source;
+    const tid = typeof lk.target==='object'?lk.target.id:lk.target;
+    const s=nodeMapCache[sid], tg=nodeMapCache[tid];
+    if(!s||!tg) return;
+    const sp=s.group.position, tp=tg.group.position;
+    const n = 2+Math.floor(Math.random()*3);
+    for(let i=0;i<n;i++){
+      const r=Math.random();
+      pos.push(sp.x+(tp.x-sp.x)*r+(Math.random()-.5)*10, sp.y+(tp.y-sp.y)*r+(Math.random()-.5)*10, sp.z+(tp.z-sp.z)*r+(Math.random()-.5)*40);
+    }
+  });
+  if(!pos.length) return;
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  particleSystem = new THREE.Points(geo, new THREE.PointsMaterial({ color:new THREE.Color(t.node.code||0x38e8ff), size:1.2, transparent:true, opacity:0.4, blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true }));
+  scene.add(particleSystem);
+}
+
+function buildSynapsePulses(links, t){
+  synapseLinks=[];
+  links.forEach(lk => {
+    const sid=typeof lk.source==='object'?lk.source.id:lk.source;
+    const tid=typeof lk.target==='object'?lk.target.id:lk.target;
+    const s=nodeMapCache[sid], tg=nodeMapCache[tid];
+    if(!s||!tg) return;
+    synapseLinks.push({ source:s, target:tg, color:new THREE.Color(t.edge[lk.type||'mention']||t.edge.mention), speed:0.35+Math.random()*0.4, offset:Math.random() });
+  });
+  if(!synapseLinks.length) return;
+  const pc=synapseLinks.length*3;
+  const positions=new Float32Array(pc*3), colors=new Float32Array(pc*3);
+  for(let i=0;i<pc;i++){
+    const c=synapseLinks[Math.floor(i/3)].color;
+    colors[i*3]=c.r; colors[i*3+1]=c.g; colors[i*3+2]=c.b;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors,3));
+  synapsePulses = new THREE.Points(geo, new THREE.PointsMaterial({ size:2.2, vertexColors:true, transparent:true, opacity:0.75, blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true }));
+  scene.add(synapsePulses);
+}
+
+// ── Static Fibonacci layout (replaces D3 simulation) ─────────────────────────
+function placeNodesStatic(nodes){
+  const rand = seededRand(42);
+
+  // 1. File nodes on Fibonacci sphere around origin — also update cluster centroids
+  const fileNodes = nodes.filter(n => n.tier==='file' && !n.anchor);
+  const filePts = fibSphere(fileNodes.length, params.clusterSpread * params.orbitRadius, 0, 0, 0, rand, params.zSpread * 0.5);
+  fileNodes.forEach((n, i) => {
+    n._sx = filePts[i].x; n._sy = filePts[i].y; n._sz = filePts[i].z;
+    if(clusterCentroids[n.cluster]){
+      clusterCentroids[n.cluster].x = n._sx;
+      clusterCentroids[n.cluster].y = n._sy;
+      clusterCentroids[n.cluster].z = n._sz;
+    }
+  });
+
+  // 2. Section/entity nodes in Fibonacci spheres around their cluster center
+  const byCluster = {};
+  nodes.filter(n => n.tier!=='file' && n.tier!=='anchor' && !n.anchor).forEach(n => {
+    const cl = n.cluster || 'shared';
+    if(!byCluster[cl]) byCluster[cl] = [];
+    byCluster[cl].push(n);
+  });
+  Object.entries(byCluster).forEach(([cl, clNodes]) => {
+    const ct = clusterCentroids[cl] || {x:0, y:0, z:0};
+    const subR = params.clusterSpread * params.subSpread;
+    const pts = fibSphere(clNodes.length, subR, ct.x, ct.y, ct.z, rand, params.zSpread * 0.22);
+    clNodes.forEach((n, i) => {
+      n._sx = pts[i].x; n._sy = pts[i].y; n._sz = pts[i].z;
+    });
+  });
+
+  // 3. Anchor at origin
+  const anchor = nodes.find(n => n.tier==='anchor' || n.anchor);
+  if(anchor){ anchor._sx=0; anchor._sy=0; anchor._sz=0; }
+}
+
+function updateEdgeLines(){
+  if(!edgeLines||!graphData||!graphData._links) return;
+  const pa = edgeLines.geometry.attributes.position;
+  let i = 0;
+  graphData._links.forEach(lk => {
+    const sid = typeof lk.source==='object'?lk.source.id:lk.source;
+    const tid = typeof lk.target==='object'?lk.target.id:lk.target;
+    const sm = nodeMapCache[sid], tm = nodeMapCache[tid];
+    if(!sm||!tm){i+=6;return;}
+    pa.array[i++]=sm.group.position.x; pa.array[i++]=sm.group.position.y; pa.array[i++]=sm.group.position.z;
+    pa.array[i++]=tm.group.position.x; pa.array[i++]=tm.group.position.y; pa.array[i++]=tm.group.position.z;
+  });
+  pa.needsUpdate = true;
+}
+
+function startLoop(nodes, links){
+  if(simulation) { simulation.stop(); simulation = null; }
+
+  placeNodesStatic(nodes); // computes _sx/_sy/_sz only
+  // Start all nodes at origin — spawn animation expands them out
+  nodeMeshes.forEach(nm => nm.group.position.set(0, 0, 0));
+  updateEdgeLines();
+
+  let pulseT = 0;
+  spawnProg = 0; // reset module-level spawn progress
+  const SPAWN_DUR = 2.5; // seconds
+  function easeOutExpo(t){ return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t); }
+
+  function animate(){
+    animFrameId = requestAnimationFrame(animate);
+    controls.update();
+    pulseT += 0.016;
+    spawnProg = Math.min(1, spawnProg + 0.016 / SPAWN_DUR);
+    const spawnT = easeOutExpo(spawnProg);
+    const driftBlend = Math.max(0, (spawnProg - 0.65) / 0.35); // drift fades in last 35%
+
+    // Expand from origin + sinusoidal drift (cozy.im style)
+    const driftAmt = params.zStrength * params.clusterSpread * 0.06;
+    nodeMeshes.forEach(nm => {
+      const d = nm.data;
+      if(d.tier==='anchor'||d.anchor) return;
+      const h = (d.id||'').charCodeAt(0) * 0.1 + (d.id||'').length * 0.07;
+      nm.group.position.x = (d._sx||0) * spawnT + Math.sin(pulseT * 0.3 + h) * driftAmt * driftBlend;
+      nm.group.position.y = (d._sy||0) * spawnT + Math.cos(pulseT * 0.2 + h * 0.7) * driftAmt * 0.5 * driftBlend;
+      nm.group.position.z = (d._sz||0) * spawnT + Math.sin(pulseT * 0.25 + h * 1.3) * driftAmt * driftBlend;
+    });
+
+    updateEdgeLines();
+
+    // Pulse anchor and file nodes
+    if(params.pulse){
+      nodeMeshes.forEach(nm => {
+        if(nm.tier==='anchor'||nm.tier==='file'){
+          const s = 1 + 0.15*Math.sin(pulseT*(nm.tier==='anchor'?0.7:1.1)+nm.data.id.charCodeAt(0)*0.2);
+          nm.haloMesh.scale.setScalar(s);
+        }
+      });
+    }
+
+    if(starfield){ starfield.rotation.y+=0.00007; starfield.rotation.x+=0.00003; }
+
+    // Follow file nodes with cluster labels
+    clusterLabelSprites.forEach(({sprite, clName}) => {
+      if(!params.clusterLabels) return;
+      const fileNm = nodeMeshes.find(nm=>nm.data.tier==='file'&&nm.data.cluster===clName);
+      if(fileNm){
+        sprite.position.x = fileNm.group.position.x;
+        sprite.position.y = fileNm.group.position.y + fileNm.baseR*4 + 22;
+        sprite.position.z = fileNm.group.position.z;
+      }
+    });
+
+    // Synapse pulses
+    if(synapsePulses&&synapseLinks.length){
+      const pa=synapsePulses.geometry.attributes.position;
+      let idx=0;
+      for(let li=0;li<synapseLinks.length;li++){
+        const lk=synapseLinks[li];
+        const sp=lk.source.group.position, tp=lk.target.group.position;
+        for(let p=0;p<3;p++){
+          const tt=(pulseT*lk.speed+lk.offset+p/3)%1;
+          pa.array[idx++]=sp.x+(tp.x-sp.x)*tt+Math.sin(pulseT*8+p)*0.3;
+          pa.array[idx++]=sp.y+(tp.y-sp.y)*tt+Math.cos(pulseT*8+p)*0.3;
+          pa.array[idx++]=sp.z+(tp.z-sp.z)*tt+Math.sin(pulseT*6+p*2)*0.3;
+        }
+      }
+      pa.needsUpdate=true;
+    }
+    composer.render();
+  }
+  animate();
+}
+
+// ── Graph loading ─────────────────────────────────────────────────────────────
+function renderGraph(){
+  if(!graphData) return;
+
+  let nodes = graphData.nodes.filter(n=>{
+    const key = n.tier||n.type;
+    return activeTiers.has(key)||activeTiers.has(n.type)||activeTiers.has(n.tier);
+  });
+  if(params.maxNodes<500) nodes=[...nodes].sort((a,b)=>b.degree-a.degree).slice(0,params.maxNodes);
+  nodes = nodes.filter(n=>n.degree>=params.minDegree);
+
+  // Always keep anchor + file nodes
+  graphData.nodes.filter(n=>n.tier==='anchor'||n.tier==='file'||n.anchor).forEach(n=>{
+    if(!nodes.find(x=>x.id===n.id)) nodes.unshift(n);
+  });
+
+  // Reset simulation state cleanly
+  nodes.forEach(n=>{ delete n._z; delete n._vz; delete n.x; delete n.y; delete n.vx; delete n.vy; delete n._clusterTarget; if(n.tier!=='anchor'&&!n.anchor){ delete n.fx; delete n.fy; } });
+
+  const ids = new Set(nodes.map(n=>n.id));
+  const links = graphData.edges.filter(e=>{
+    const s=typeof e.source==='object'?e.source.id:e.source;
+    const t=typeof e.target==='object'?e.target.id:e.target;
+    return ids.has(s)&&ids.has(t);
+  }).map(e=>({ source:typeof e.source==='object'?e.source.id:e.source, target:typeof e.target==='object'?e.target.id:e.target, type:e.type, weight:e.weight }));
+
+  graphData._links = links;
+  buildScene(nodes, links);
+  updateClusterLegend(nodes);
+}
+
+function loadGraph(data){
+  graphData = data;
+  document.getElementById('drop-zone').classList.add('hidden');
+  document.getElementById('topbar').classList.remove('hidden');
+  document.getElementById('toggle-panel').classList.remove('hidden');
+  document.getElementById('panel').classList.remove('hidden');
+  document.getElementById('cluster-legend').classList.remove('hidden');
+  const nodeCount = data.meta.nodeCount||data.meta.fileCount||data.nodes.length;
+  const edgeCount = data.meta.edgeCount||data.edges.length;
+  document.getElementById('meta-text').textContent = `${data.meta.project||'graph'} · ${nodeCount} nodes · ${edgeCount} edges`;
+  buildTierFilters(data.nodes);
+  renderGraph();
+}
+
+// ── Cluster legend ────────────────────────────────────────────────────────────
+function updateClusterLegend(nodes){
+  const legend = document.getElementById('cluster-legend');
+  legend.innerHTML = '';
+  const clusters = [...new Set(nodes.map(n=>n.cluster).filter(Boolean))].filter(c=>c!=='shared');
+  clusters.forEach(cl => {
+    const cent = clusterCentroids[cl];
+    if(!cent) return;
+    const hex = '#'+new THREE.Color(cent.color).getHexString();
+    const el = document.createElement('div');
+    el.className = 'cluster-entry';
+    el.innerHTML = `<div class="cluster-dot" style="background:${hex};box-shadow:0 0 5px ${hex}80"></div><span>${cl}</span>`;
+    legend.appendChild(el);
+  });
+  if(nodes.some(n=>n.shared)){
+    const el = document.createElement('div');
+    el.className = 'cluster-entry';
+    el.innerHTML = `<div class="cluster-dot" style="background:#fff;box-shadow:0 0 5px #ffffff60"></div><span style="opacity:0.4">shared</span>`;
+    legend.appendChild(el);
+  }
+}
+
+// ── Example data ──────────────────────────────────────────────────────────────
+function loadExample(name){ loadGraph(makeExample(name, 28)); }
+
+function makeExample(name, n){
+  const files = ['CLAUDE.md','ARCHITECTURE.md','AGENTS.md','MEMORY.md'];
+  const nodes = [{
+    id:'n0',label:'CLAUDE.md',path:'CLAUDE.md',type:'doc',tier:'anchor',
+    cluster:'CLAUDE.md',clusterIds:['CLAUDE.md'],shared:false,
+    size:30,anchor:true,degree:0,modified:Date.now()/1000-3600,keywords:[],
+  }];
+  files.slice(1).forEach((f,i)=>{
+    nodes.push({ id:`nf${i}`,label:f,path:f,type:'doc',tier:'file',cluster:f,clusterIds:[f],shared:false,size:20,anchor:false,degree:0,modified:Date.now()/1000-7200,keywords:[] });
+  });
+  const names=['Auth','Setup','Config','Memory','Tools','Rules','Context','Model','Deploy','Lint','Agent','Prompt','Task','Flow','State'];
+  for(let i=0;i<n-1-3;i++){
+    const fi=Math.floor(Math.random()*3);
+    const cl=files[fi+1];
+    const isShared=Math.random()<0.15;
+    const sc=isShared?[cl,files[Math.floor(Math.random()*3)+1]]:[cl];
+    nodes.push({ id:`n${i+1}`,label:names[i%names.length]+(i>=names.length?i:''),path:`${cl}::n${i+1}`,type:['doc','config','shell'][i%3],tier:['section','entity','term'][i%3],cluster:isShared?'shared':cl,clusterIds:sc,shared:isShared,size:3+Math.floor(Math.random()*8),anchor:false,degree:0,modified:Date.now()/1000-Math.random()*86400*14,keywords:[] });
+  }
+  const edges=[];
+  files.slice(1).forEach((f,i)=>edges.push({source:'n0',target:`nf${i}`,type:'references',weight:0.8}));
+  nodes.filter(n=>n.tier!=='anchor'&&n.tier!=='file').forEach(nd=>{
+    const fid=nodes.find(n=>n.tier==='file'&&n.label===(nd.cluster==='shared'?nd.clusterIds[0]:nd.cluster))?.id;
+    if(fid) edges.push({source:fid,target:nd.id,type:'contains',weight:0.5});
+  });
+  for(let i=0;i<n;i++){
+    const a=nodes[Math.floor(Math.random()*nodes.length)];
+    const b=nodes[Math.floor(Math.random()*nodes.length)];
+    if(a.id!==b.id) edges.push({source:a.id,target:b.id,type:'similarity',weight:0.2});
+  }
+  const deg={};nodes.forEach(n=>deg[n.id]=0);edges.forEach(e=>{deg[e.source]=(deg[e.source]||0)+1;deg[e.target]=(deg[e.target]||0)+1;});
+  nodes.forEach(n=>n.degree=deg[n.id]||0);
+  return { meta:{project:name,nodeCount:nodes.length,edgeCount:edges.length,anchorNode:'CLAUDE.md',generated:new Date().toISOString()}, nodes, edges };
+}
+
+// ── File drop ─────────────────────────────────────────────────────────────────
+const dz=document.getElementById('drop-zone');
+document.getElementById('btn-browse').addEventListener('click',()=>document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change',e=>{if(e.target.files[0])readFile(e.target.files[0]);});
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');if(e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);});
+function readFile(f){const r=new FileReader();r.onload=e=>{try{loadGraph(JSON.parse(e.target.result));}catch{alert('Invalid JSON');}};r.readAsText(f);}
+
+// ── Auto-load from URL param (?graph=/graphs/abc123) ─────────────────────────
+(function autoLoad(){
+  const p=new URLSearchParams(window.location.search);
+  const graphUrl=p.get('graph');
+  if(graphUrl){
+    fetch(graphUrl).then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
+      .then(data=>loadGraph(data))
+      .catch(err=>console.warn('Auto-load failed:',err));
+  }
+})();
+
+// ── Tier filters ──────────────────────────────────────────────────────────────
+function buildTierFilters(nodes){
+  const tiers=[...new Set(nodes.map(n=>n.tier||n.type).filter(Boolean))];
+  activeTiers=new Set([...tiers,...nodes.map(n=>n.type).filter(Boolean)]);
+  const c=document.getElementById('tier-filters');c.innerHTML='';
+  tiers.forEach(tier=>{
+    const btn=document.createElement('button');btn.className='type-pill';btn.textContent=tier;
+    btn.onclick=()=>{
+      if(activeTiers.has(tier)&&activeTiers.size>3){activeTiers.delete(tier);btn.classList.add('off');}
+      else{activeTiers.add(tier);btn.classList.remove('off');}
+      renderGraph();
+    };
+    c.appendChild(btn);
+  });
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+const tt=document.getElementById('tooltip');
+function showTooltip(e,d){
+  document.getElementById('tip-name').textContent=d.label;
+  const tier=d.tier||d.type;
+  document.getElementById('tip-meta').textContent=`${tier}${d.shared?' · shared':''} · size ${d.size||'?'} · ${d.degree} connections`;
+  document.getElementById('tip-cluster').textContent=d.shared&&d.clusterIds?d.clusterIds.join(' ↔ '):(d.cluster||'');
+  tt.classList.add('visible');
+  tt.style.left=(e.clientX+16)+'px';
+  tt.style.top=(e.clientY-32)+'px';
+}
+function hideTooltip(){tt.classList.remove('visible');}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+function setTheme(theme,btn){
+  currentTheme=theme;
+  document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const t=THEMES[theme];params.bloom={...t.bloom};
+  document.getElementById('val-bloom').textContent=t.bloom.strength;
+  document.getElementById('val-bloomr').textContent=t.bloom.radius;
+  document.getElementById('val-bloomt').textContent=t.bloom.threshold;
+  renderGraph();
+}
+function setBloom(key,el){
+  params.bloom[key]=parseFloat(el.value);
+  const ids={strength:'val-bloom',radius:'val-bloomr',threshold:'val-bloomt'};
+  document.getElementById(ids[key]).textContent=el.value;
+  if(bloomPass){bloomPass.strength=params.bloom.strength;bloomPass.radius=params.bloom.radius;bloomPass.threshold=params.bloom.threshold;}
+}
+function setPhysics(key,el){
+  params[key]=parseFloat(el.value);
+  const ids={clusterSpread:'val-cspread',zSpread:'val-zspread',zStrength:'val-zstrength',subSpread:'val-subspread',orbitSpeed:'val-orbitspeed',orbitRadius:'val-orbitradius'};
+  if(ids[key]) document.getElementById(ids[key]).textContent=el.value;
+  if(key==='zSpread'||key==='clusterSpread'||key==='subSpread'||key==='orbitRadius'){renderGraph();return;}
+  if(key==='orbitSpeed'){controls.autoRotateSpeed=params.orbitSpeed;return;}
+  // zStrength: drift amplitude — animate loop reads it live, no rebuild needed
+}
+function resetParams(){
+  params = {
+    clusterSpread:300, zSpread:320, zStrength:0.5, subSpread:0.42, orbitSpeed:0.5, orbitRadius:1.0,
+    scale:0.5, coreSize:2.5,
+    pulse:true, labels:true, clusterLabels:true,
+    particles:true, edgeColor:true, edgeOpacity:0.45, crossEdge:true,
+    minDegree:0, maxNodes:500,
+    bloom:{ strength:0.8, radius:0.6, threshold:0.1 },
+  };
+  currentTheme = 'sci-fi';
+  document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.preset-btn').classList.add('active');
+  const sliders = {
+    clusterSpread:300, zSpread:320, zStrength:0.5, subSpread:0.42, orbitSpeed:0.5, orbitRadius:1.0, scale:0.5, coreSize:2.5, edgeOpacity:0.45
+  };
+  Object.keys(sliders).forEach(key => {
+    const el = document.querySelector(`input[oninput*="${key}"]`);
+    if(el){ el.value = sliders[key]; setPhysics(key, el); }
+  });
+}
+function setVisual(key,el){
+  params[key]=parseFloat(el.value);
+  const ids={scale:'val-scale',coreSize:'val-coresize',edgeOpacity:'val-edge-opacity'};
+  if(ids[key]) document.getElementById(ids[key]).textContent=el.value;
+  if(key==='edgeOpacity'&&edgeLines){edgeLines.material.opacity=params.edgeOpacity;return;}
+  renderGraph();
+}
+function setFilter(key,el){
+  params[key==='minDegree'?'minDegree':'maxNodes']=parseInt(el.value);
+  document.getElementById(key==='minDegree'?'val-mindegree':'val-maxnodes').textContent=el.value==500?'all':el.value;
+  renderGraph();
+}
+function toggleOpt(key,btn){
+  params[key]=!params[key];btn.classList.toggle('on',params[key]);
+  if(key==='labels') nodeMeshes.forEach(nm=>{if(nm.label)nm.label.visible=params.labels;});
+  else if(key==='clusterLabels') clusterLabelSprites.forEach(({sprite})=>sprite.visible=params.clusterLabels);
+  else renderGraph();
+}
+function togglePanel(){
+  panelVisible=!panelVisible;
+  document.getElementById('panel').classList.toggle('hidden',!panelVisible);
+  document.getElementById('toggle-panel').textContent=panelVisible?'⊟ params':'⊞ params';
+  document.getElementById('toggle-panel').classList.toggle('collapsed',!panelVisible);
+  onResize();
+}
+
+// ── Animation ─────────────────────────────────────────────────────────────────
+// resetEdgeColors: dims all edges to near-zero before progressive reveal
+function resetEdgeColors(){
+  if(!edgeLines||!graphData._links) return;
+  const colors=edgeLines.geometry.attributes.color;
+  const t=THEMES[currentTheme];
+  const edgeCount=graphData._links.length;
+  for(let i=0;i<edgeCount;i++){
+    const link=graphData._links[i];
+    const ec=new THREE.Color(t.edge[link.type]||t.edge.mention);
+    const dimCol=new THREE.Color(ec.r*0.06,ec.g*0.06,ec.b*0.06);
+    colors.array[i*6]=dimCol.r; colors.array[i*6+1]=dimCol.g; colors.array[i*6+2]=dimCol.b;
+    colors.array[i*6+3]=dimCol.r; colors.array[i*6+4]=dimCol.g; colors.array[i*6+5]=dimCol.b;
+  }
+  colors.needsUpdate=true;
+}
+
+// animateEdgeReveal: lights up edges connected to a newly appearing node
+function animateEdgeReveal(appearingNode, dur){
+  if(!edgeLines||!graphData._links) return;
+  const nodeId=appearingNode.data.id;
+  const colors=edgeLines.geometry.attributes.color;
+  const edgeCount=graphData._links.length;
+  const t=THEMES[currentTheme];
+
+  for(let i=0;i<edgeCount;i++){
+    const link=graphData._links[i];
+    const sid=typeof link.source==='object'?link.source.id:link.source;
+    const tid=typeof link.target==='object'?link.target.id:link.target;
+    if(sid!==nodeId&&tid!==nodeId) continue;
+    const sm=nodeMapCache[sid], tm=nodeMapCache[tid];
+    if(!sm||!tm) continue;
+    const bothVisible=sm.group.visible&&tm.group.visible;
+    const ec=new THREE.Color(t.edge[link.type]||t.edge.mention);
+    const posIdx=i*6;
+    if(bothVisible){
+      colors.array[posIdx]=ec.r; colors.array[posIdx+1]=ec.g; colors.array[posIdx+2]=ec.b;
+      colors.array[posIdx+3]=ec.r; colors.array[posIdx+4]=ec.g; colors.array[posIdx+5]=ec.b;
+    } else {
+      const dimCol=new THREE.Color(ec.r*0.1,ec.g*0.1,ec.b*0.1);
+      colors.array[posIdx]=dimCol.r; colors.array[posIdx+1]=dimCol.g; colors.array[posIdx+2]=dimCol.b;
+      colors.array[posIdx+3]=dimCol.r; colors.array[posIdx+4]=dimCol.g; colors.array[posIdx+5]=dimCol.b;
+    }
+  }
+  colors.needsUpdate=true;
+}
+
+// ── PLAY ANIMATION ────────────────────────────────────────────────────────────
+function playAnimation(overrideDur){
+  if(!graphData) return;
+  const dur = overrideDur !== undefined ? overrideDur : parseInt(document.getElementById('anim-duration').value);
+  const style = document.getElementById('anim-style').value;
+
+  // ── Start: compact cluster layout ──
+  params.clusterSpread = 100;
+  params.subSpread = 0.9;
+  const liveNodes = nodeMeshes.map(nm => nm.data);
+  placeNodesStatic(liveNodes);
+  spawnProg = 0;
+  // sync sliders
+  const _syncSlider = (key, val) => {
+    const el = document.querySelector(`input[oninput*="${key}"]`);
+    const id = {clusterSpread:'val-cspread', subSpread:'val-subspread'}[key];
+    if(el) el.value = val;
+    if(id) document.getElementById(id).textContent = val;
+  };
+  _syncSlider('clusterSpread', 100);
+  _syncSlider('subSpread', 0.9);
+
+  // Sort nodes: anchor first, then file, then rest
+  const tierOrder = {anchor:0, file:1, section:2, entity:3, term:4};
+  const list = [...nodeMeshes].sort((a,b) => {
+    const ta = a.data.tier || (a.data.anchor ? 'anchor' : 'other');
+    const tb = b.data.tier || (b.data.anchor ? 'anchor' : 'other');
+    return (tierOrder[ta]??5) - (tierOrder[tb]??5);
+  });
+  const delay = dur / list.length;
+
+  // Hide everything
+  nodeMeshes.forEach(nm => { nm.group.visible=false; nm.group.scale.set(0,0,0); });
+  if(edgeLines) edgeLines.visible=false;
+  if(particleSystem) particleSystem.visible=false;
+  if(synapsePulses) synapsePulses.visible=false;
+
+  if(style==='edges'||style==='all'){
+    setTimeout(()=>{ if(edgeLines){ edgeLines.visible=true; resetEdgeColors(); }}, 100);
+  }
+
+  // Reveal nodes one by one
+  list.forEach((nm,i) => {
+    setTimeout(()=>{
+      nm.group.visible = true;
+      if(style==='pop'||style==='all') animateScaleIn(nm.group);
+      else nm.group.scale.set(1,1,1);
+      if(style==='edges'||style==='all') animateEdgeReveal(nm, dur);
+    }, i * delay);
+  });
+
+  const totalDur = dur + 200;
+
+  if(style!=='edges'&&style!=='all'){
+    setTimeout(()=>{
+      if(edgeLines) edgeLines.visible=true;
+      if(particleSystem) particleSystem.visible=true;
+      if(synapsePulses) synapsePulses.visible=true;
+    }, dur+400);
+  }
+
+  // ── End: restore default layout and expand out ──
+  setTimeout(()=>{
+    if(edgeLines) edgeLines.visible=true;
+    if(particleSystem) particleSystem.visible=true;
+    if(synapsePulses) synapsePulses.visible=true;
+
+    params.clusterSpread = 300;
+    params.subSpread = 0.42;
+    placeNodesStatic(nodeMeshes.map(nm => nm.data));
+    spawnProg = 0; // re-trigger expand animation to full positions
+
+    _syncSlider('clusterSpread', 300);
+    _syncSlider('subSpread', 0.42);
+
+    if(graphData._links && params.particles){
+      if(particleSystem){ scene.remove(particleSystem); particleSystem = null; }
+      buildParticles(graphData._links, THEMES[currentTheme]);
+    }
+  }, totalDur);
+}
+
+function animateScaleIn(group){
+  const t0=performance.now(), duration=400;
+  (function step(now){
+    const elapsed=now-t0;
+    const p=Math.min(elapsed/duration,1);
+    const bounce=1+Math.sin(p*Math.PI)*0.3*Math.pow(1-p,0.5);
+    group.scale.setScalar(bounce);
+    if(p<1) requestAnimationFrame(step);
+    else group.scale.set(1,1,1);
+  })(performance.now());
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportPNG(){
+  composer.render();
+  renderer.domElement.toBlob(blob=>{
+    const a=document.createElement('a');
+    a.download=`${graphData?.meta?.project||'graph'}.png`;
+    a.href=URL.createObjectURL(blob); a.click();
+  });
+}
+function exportVideo(){
+  if(!graphData) return;
+  const dur=parseInt(document.getElementById('anim-duration').value);
+  const ind=document.getElementById('rec-indicator'), rt=document.getElementById('rec-time');
+  const stream=renderer.domElement.captureStream(30); const chunks=[];
+  mediaRecorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9'});
+  mediaRecorder.ondataavailable=e=>chunks.push(e.data);
+  mediaRecorder.onstop=()=>{
+    const blob=new Blob(chunks,{type:'video/webm'});
+    const a=document.createElement('a'); a.download=`${graphData?.meta?.project||'graph'}.webm`;
+    a.href=URL.createObjectURL(blob); a.click(); ind.classList.remove('active');
+  };
+  ind.classList.add('active'); let el=0;
+  const tick=setInterval(()=>{el+=100;rt.textContent=(el/1000).toFixed(1)+'s';},100);
+  mediaRecorder.start(); playAnimation();
+  setTimeout(()=>{clearInterval(tick);mediaRecorder.stop();},dur+3000);
+}
+function shareToX(){
+  const proj=graphData?.meta?.project||'my project';
+  const text=encodeURIComponent(`I just visualized my agent's Neural ✦\n\nhttps://neural-visualizer.up.railway.app`); setTimeout(()=>window.open(`https://twitter.com/intent/tweet?text=${text}`,'_blank'),600);
+}
+
+// ── Reset to home ────────────────────────────────────────────────────────────
+function resetToHome(){
+  graphData = null;
+  document.getElementById('drop-zone').classList.remove('hidden');
+  document.getElementById('topbar').classList.add('hidden');
+  document.getElementById('toggle-panel').classList.add('hidden');
+  document.getElementById('panel').classList.add('hidden');
+  document.getElementById('cluster-legend').classList.add('hidden');
+  // clear the scene
+  while(scene.children.length > 0) scene.remove(scene.children[0]);
+  renderer.render(scene, camera);
+}
+
+// ── Service API modal ────────────────────────────────────────────────────────
+function openServiceModal(){
+  document.getElementById('service-modal').style.display='flex';
+}
+function closeServiceModal(){
+  document.getElementById('service-modal').style.display='none';
+}
+document.getElementById('service-modal').addEventListener('click',function(e){
+  if(e.target===this) closeServiceModal();
+});
+
+// ── Neural-gen modal ─────────────────────────────────────────────────────────
+function openNeuralGenModal(){
+  const m=document.getElementById('neural-gen-modal');
+  m.style.display='flex';
+}
+function closeNeuralGenModal(){
+  document.getElementById('neural-gen-modal').style.display='none';
+}
+document.getElementById('neural-gen-modal').addEventListener('click',function(e){
+  if(e.target===this) closeNeuralGenModal();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+initThree();
+</script>
+</body>
+</html>
