@@ -38,16 +38,16 @@ Agent A  →  GET /ui/?graph=/graphs/:id  (3D visualiser)
 
 ## Hackathon Tracks
 
-### Track 1 — Solana Agent-to-Agent Economy
+### Track 1 — Solana Agent-to-Agent Economy Track
 - Agent pays agent for a service via x402 on Solana
 - On-chain verifiable: memo receipts + NFT mint readable on Solscan
 
-### Track 2 — Metaplex Agents
+### Track 2 — Metaplex Agents Track 
 1. Neural service agent registered on **Metaplex Agent Registry** ✅
 2. A2A interaction: requester pays Neural, receives Metaplex Core NFT ✅
 3. NFT = download key: holder accesses full agent files on-chain verified ✅
 
-### GoldRush Bonus
+### Track 3 - GoldRush Agentic Track
 - `GET /reputation/:wallet` — trust score from GoldRush/Covalent API
 
 ---
